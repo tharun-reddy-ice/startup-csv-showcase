@@ -22,6 +22,7 @@ const Index = () => {
   const [csvData, setCsvData] = useState<StartupData[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Sample data for demonstration
   const sampleData: StartupData[] = [
@@ -64,49 +65,120 @@ const Index = () => {
   ];
 
   const parseCSV = (csvText: string) => {
+    console.log('Parsing CSV text:', csvText.substring(0, 200) + '...');
+    
     const lines = csvText.trim().split(/\r?\n/);
-    if (lines.length < 2) return;
+    console.log('Number of lines:', lines.length);
+    
+    if (lines.length < 2) {
+      console.error('CSV must have at least 2 lines (header + data)');
+      return;
+    }
 
-    const headers = lines[0].split(',').map(header => header.trim().replace(/"/g, ''));
+    // Parse headers - handle quoted fields
+    const headerLine = lines[0];
+    const headers = parseCSVLine(headerLine);
+    console.log('Parsed headers:', headers);
     setHeaders(headers);
 
+    // Parse data rows
     const data = lines.slice(1).map((line, index) => {
-      const values = line.split(',').map(value => value.trim().replace(/"/g, ''));
+      const values = parseCSVLine(line);
       const rowData: any = { id: (index + 1).toString() };
       
       headers.forEach((header, headerIndex) => {
-        rowData[header.toLowerCase().replace(/\s+/g, '')] = values[headerIndex] || '';
+        const key = header.toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9]/g, '');
+        rowData[key] = values[headerIndex] || '';
       });
       
       return rowData;
     });
 
+    console.log('Parsed data:', data);
     setCsvData(data);
+  };
+
+  const parseCSVLine = (line: string): string[] => {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      const nextChar = line[i + 1];
+      
+      if (char === '"') {
+        if (inQuotes && nextChar === '"') {
+          current += '"';
+          i++; // Skip next quote
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    
+    result.push(current.trim());
+    return result;
   };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file && (file.type.includes('csv') || file.name.endsWith('.csv'))) {
+    console.log('File selected:', file);
+    
+    if (file) {
+      setIsLoading(true);
       const reader = new FileReader();
+      
       reader.onload = (e) => {
         const csvText = e.target?.result as string;
+        console.log('File loaded, length:', csvText.length);
         parseCSV(csvText);
+        setIsLoading(false);
       };
+      
+      reader.onerror = (e) => {
+        console.error('Error reading file:', e);
+        setIsLoading(false);
+      };
+      
       reader.readAsText(file);
     }
+    
+    // Reset the input value so the same file can be uploaded again
+    event.target.value = '';
   };
 
   const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     setIsDragging(false);
     
-    const file = event.dataTransfer.files[0];
-    if (file && (file.type.includes('csv') || file.name.endsWith('.csv'))) {
+    const files = event.dataTransfer.files;
+    console.log('Files dropped:', files.length);
+    
+    if (files.length > 0) {
+      const file = files[0];
+      console.log('Dropped file:', file.name, file.type);
+      
+      setIsLoading(true);
       const reader = new FileReader();
+      
       reader.onload = (e) => {
         const csvText = e.target?.result as string;
+        console.log('Dropped file loaded, length:', csvText.length);
         parseCSV(csvText);
+        setIsLoading(false);
       };
+      
+      reader.onerror = (e) => {
+        console.error('Error reading dropped file:', e);
+        setIsLoading(false);
+      };
+      
       reader.readAsText(file);
     }
   };
@@ -116,8 +188,16 @@ const Index = () => {
     setIsDragging(true);
   };
 
-  const handleDragLeave = () => {
-    setIsDragging(false);
+  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    // Only set isDragging to false if we're leaving the drop zone entirely
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX;
+    const y = event.clientY;
+    
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+      setIsDragging(false);
+    }
   };
 
   const loadSampleData = () => {
@@ -159,41 +239,43 @@ const Index = () => {
             </CardHeader>
             <CardContent>
               <div
-                className={`border-2 border-dashed rounded-lg p-8 text-center transition-all duration-300 ${
+                className={`border-2 border-dashed rounded-lg p-8 text-center transition-all duration-300 cursor-pointer ${
                   isDragging 
-                    ? 'border-blue-500 bg-blue-50' 
-                    : 'border-gray-300 hover:border-gray-400'
-                }`}
+                    ? 'border-blue-500 bg-blue-50 scale-105' 
+                    : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
+                } ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
                 onDrop={handleDrop}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
+                onClick={() => document.getElementById('csv-upload')?.click()}
               >
-                <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <FileText className={`w-12 h-12 mx-auto mb-4 ${isDragging ? 'text-blue-500' : 'text-gray-400'}`} />
                 <p className="text-lg font-medium text-gray-700 mb-2">
-                  Drop your CSV file here or click to browse
+                  {isLoading ? 'Processing file...' : isDragging ? 'Drop your CSV file here' : 'Drop your CSV file here or click to browse'}
                 </p>
                 <p className="text-sm text-gray-500 mb-4">
                   Supports CSV files with startup information
                 </p>
                 <input
                   type="file"
-                  accept=".csv"
+                  accept=".csv,text/csv,application/csv"
                   onChange={handleFileUpload}
                   className="hidden"
                   id="csv-upload"
+                  disabled={isLoading}
                 />
-                <label htmlFor="csv-upload">
-                  <Button variant="outline" className="cursor-pointer">
+                {!isDragging && !isLoading && (
+                  <Button variant="outline" className="pointer-events-none">
                     Choose File
                   </Button>
-                </label>
+                )}
               </div>
               
               <div className="mt-6 text-center">
                 <p className="text-sm text-gray-500 mb-3">
                   Don't have a CSV file? Try our sample data
                 </p>
-                <Button onClick={loadSampleData} variant="default">
+                <Button onClick={loadSampleData} variant="default" disabled={isLoading}>
                   Load Sample Data
                 </Button>
               </div>
@@ -242,7 +324,7 @@ const Index = () => {
                             key={colIndex}
                             className="border border-gray-200 px-4 py-3 text-sm text-gray-600"
                           >
-                            {row[header.toLowerCase().replace(/\s+/g, '')] || '-'}
+                            {row[header.toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9]/g, '')] || '-'}
                           </td>
                         ))}
                       </tr>

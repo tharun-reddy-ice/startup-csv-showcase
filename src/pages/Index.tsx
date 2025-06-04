@@ -64,7 +64,7 @@ const Index = () => {
   ];
 
   const parseCSV = (csvText: string) => {
-    const lines = csvText.trim().split('\n');
+    const lines = csvText.trim().split(/\r?\n/);
     if (lines.length < 2) return;
 
     const headers = lines[0].split(',').map(header => header.trim().replace(/"/g, ''));
@@ -86,7 +86,7 @@ const Index = () => {
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file && file.type === 'text/csv') {
+    if (file && (file.type.includes('csv') || file.name.endsWith('.csv'))) {
       const reader = new FileReader();
       reader.onload = (e) => {
         const csvText = e.target?.result as string;
@@ -101,7 +101,7 @@ const Index = () => {
     setIsDragging(false);
     
     const file = event.dataTransfer.files[0];
-    if (file && file.type === 'text/csv') {
+    if (file && (file.type.includes('csv') || file.name.endsWith('.csv'))) {
       const reader = new FileReader();
       reader.onload = (e) => {
         const csvText = e.target?.result as string;
